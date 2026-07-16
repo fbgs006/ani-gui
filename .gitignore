@@ -1,0 +1,34 @@
+# Installer / Large files
+vs_BuildTools.exe
+VSCodeUserSetup-*.exe
+
+# Node / Tauri build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# Rust and local tooling
+target/
+Cargo.lock
+
+# VS Code and editor state
+.vscode/
+
+# Misc project artifacts
+*.log
+*.tmp
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# System files
+.DS_Store
+Thumbs.db
