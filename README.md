@@ -1,4 +1,4 @@
-﻿# AniGUI 🌸
+# AniGUI 🌸
 
 AniGUI is a premium, beautifully-designed desktop anime companion app that merges the lightning-fast CLI streaming of `ani-cli` with a gorgeous, modern graphical interface. 
 
@@ -35,15 +35,21 @@ Because AniGUI acts as a beautiful graphical shell for `ani-cli` and `mpv`, you 
    scoop install ani-cli
    ```
 
-## 🚀 Running the App
+## 🚀 Installation & Running
 
-*Note: Pre-compiled binaries will be available in the Releases tab soon. For now, you can run it from source!*
+The easiest way to install AniGUI is to download the latest pre-compiled binary:
+1. Head over to the **[Releases](https://github.com/fbgs006/ani-gui/releases)** tab on this repository.
+2. Download the latest `AniGUI-Portable.exe` (or the setup installer).
+3. Ensure you have installed the Prerequisites (Git, MPV, Ani-cli) above.
+4. Run the `.exe` and enjoy!
+
+### Building from Source (For Developers)
 
 1. Clone this repository.
 2. Ensure you have [Node.js](https://nodejs.org/) and [Rust](https://rustup.rs/) installed.
 3. Open a terminal in the `anigui-tauri/` folder.
 4. Run `npm install` to install frontend dependencies.
-5. Run `npm run tauri dev` to launch the app!
+5. Run `npm run tauri dev` to launch the app in development mode.
 
 ## ⚙️ Settings Setup
 
