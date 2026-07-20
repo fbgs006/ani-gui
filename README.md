@@ -65,6 +65,6 @@ Once you launch AniGUI for the first time, click the **Settings ⚙️** icon in
 
 ---
 
-*Note: This project is AI-assisted and human-managed: AI helped with parts of the implementation and documentation, while the structure, review, and ongoing decisions are guided by a person.*
+*Note: This project is a collaboration between Human and AI. The Human (creator) acts as the Director and Project Manager—generating the ideas, making design decisions, and finding issues—while the AI acts as the Lead Developer, actively writing the code, building the app, and fixing the bugs.*
 
 *Disclaimer: AniGUI is a graphical wrapper for ani-cli. It does not host or store any copyrighted video material.*
