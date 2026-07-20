@@ -20,6 +20,7 @@ interface RelationEdge {
 }
 interface Media {
   id: number;
+  idMal?: number;
   title: MediaTitle;
   format?: string;
   episodes?: number;
@@ -41,11 +42,12 @@ interface Config {
   anilist_token: string;
   download_dir: string;
   theme: string;
+  auto_sync: boolean;
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let config: Config = { bash_path: "", quality: "best", confirm_before_sync: true, anilist_token: "", download_dir: "", theme: "purple" };
+let config: Config = { bash_path: "", quality: "best", confirm_before_sync: true, anilist_token: "", download_dir: "", theme: "purple", auto_sync: false };
 let currentTab: "continue" | "trending" | "search" | "planning" | "downloads" = "trending";
 let sidebarItems: Media[] = [];
 let sidebarPage = 1;
@@ -321,6 +323,10 @@ function renderApp() {
             <option value="480">480p</option>
             <option value="360">360p</option>
           </select>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+          <label class="form-label" style="margin-bottom: 0;">Auto-Sync Progress to AniList</label>
+          <input type="checkbox" id="s-autosync" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);" />
         </div>
       </div>
       <div class="modal-footer">
@@ -635,8 +641,6 @@ async function playEpisode(ep: number, triggerElement?: HTMLElement) {
 }
 
 function resetPlayButtons() {
-  activePlayingAnimeId = null;
-  activePlayingEp = null;
   const playBtn = document.getElementById("btn-play-selected");
   if (playBtn) playBtn.innerHTML = "▶ Play";
   const nextBtn = document.getElementById("play-next");
@@ -1136,15 +1140,41 @@ async function init() {
     resetPlayButtons();
   });
 
-  await listen("playback_finished", (event: any) => {
-    const { epNum, elapsed } = event.payload;
-    if (elapsed > 60 && config.anilist_token) {
-      if (config.confirm_before_sync) {
+  await listen("playback_finished", async (event: any) => {
+    const { epNum, percent, timePos } = event.payload;
+    if (!config.anilist_token) return;
+
+    let isFinished = percent > 0.85;
+    
+    // Try to get AniSkip data if we have the MAL ID
+    if (selectedMedia?.idMal && timePos > 0) {
+      try {
+        const skipRes = await fetch(`https://api.aniskip.com/v2/skip-times/${selectedMedia.idMal}/${epNum}?types=ed&episodeLength=0`);
+        if (skipRes.ok) {
+          const skipData = await skipRes.json();
+          const ed = skipData.results?.find((r: any) => r.skipType === "ed");
+          if (ed && ed.interval?.startTime) {
+            // If they reached within 10 seconds of the ending song start, it's finished!
+            isFinished = timePos >= (ed.interval.startTime - 10);
+          }
+        }
+      } catch (err) {
+        console.error("AniSkip fetch failed", err);
+      }
+    }
+
+    if (isFinished) {
+      if (config.auto_sync) {
+        // Auto-sync silently in background
+        try {
+          await invoke("sync_progress", { mediaId: activePlayingAnimeId, epNum: activePlayingEp });
+          toast(`Auto-synced Episode ${activePlayingEp}`, "success");
+        } catch (err: any) {
+          toast(`Failed to auto-sync: ${err}`, "error");
+        }
+      } else if (config.confirm_before_sync) {
         pendingSyncEp = epNum;
         showSyncBar(epNum);
-      } else {
-        pendingSyncEp = epNum;
-        document.getElementById("sync-yes")!.click();
       }
     }
   });
@@ -1184,11 +1214,12 @@ async function init() {
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 function openSettings() {
-  (document.getElementById("s-token") as HTMLInputElement).value = config.anilist_token;
-  (document.getElementById("s-bash") as HTMLInputElement).value = config.bash_path;
-  (document.getElementById("s-dldir") as HTMLInputElement).value = config.download_dir;
+  (document.getElementById("s-token") as HTMLInputElement).value = config.anilist_token || "";
+  (document.getElementById("s-bash") as HTMLInputElement).value = config.bash_path || "";
+  (document.getElementById("s-dldir") as HTMLInputElement).value = config.download_dir || "";
   (document.getElementById("s-theme") as HTMLSelectElement).value = config.theme || "purple";
-  (document.getElementById("s-quality") as HTMLSelectElement).value = config.quality;
+  (document.getElementById("s-quality") as HTMLSelectElement).value = config.quality || "best";
+  (document.getElementById("s-autosync") as HTMLInputElement).checked = config.auto_sync || false;
   document.getElementById("modal-settings")!.classList.add("open");
 }
 
@@ -1198,6 +1229,7 @@ async function saveSettings() {
   config.download_dir = (document.getElementById("s-dldir") as HTMLInputElement).value.trim();
   config.theme = (document.getElementById("s-theme") as HTMLSelectElement).value;
   config.quality = (document.getElementById("s-quality") as HTMLSelectElement).value;
+  config.auto_sync = (document.getElementById("s-autosync") as HTMLInputElement).checked;
 
   await invoke("save_config", { config });
   
