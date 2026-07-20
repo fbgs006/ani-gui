@@ -1,53 +1,61 @@
-# AniGUI
+﻿# AniGUI 🌸
 
-AniGUI is a desktop anime companion app for browsing, watching, downloading, and syncing progress with AniList. The repository combines a Tauri 2 application with a small Python prototype and a UI redesign mockup, so the public GitHub page shows the full evolution of the project instead of only the finished app.
+AniGUI is a premium, beautifully-designed desktop anime companion app that merges the lightning-fast CLI streaming of `ani-cli` with a gorgeous, modern graphical interface. 
 
-This project is AI-assisted and human-managed: AI helped with parts of the implementation and documentation, while the structure, review, and ongoing decisions are guided by a person.
+Built with Tauri 2 and Rust, AniGUI lets you browse trending anime, watch episodes directly on your desktop, and automatically sync your progress with your AniList account.
 
-## What this repo contains
+## ✨ Features
 
-- `anigui-tauri/` - the main Tauri app built with Rust, TypeScript, HTML, and CSS
-- `anicli_gui.py` - an earlier Python-based GUI prototype
-- `anigui_redesign.html` - a visual mockup used while shaping the interface
+- **Real-Time Catalog:** Browse trending, highly-rated, and popular anime directly from AniList, or search the entire database instantly.
+- **Lightning Fast Playback:** Seamlessly streams episodes via `ani-cli` directly into a native `mpv` video player window.
+- **Downloads Manager:** Download entire batches of episodes to your hard drive and manage/play them natively from the built-in Downloads tab.
+- **Exact-Second Resume:** Native Lua scripts track exactly where you close the video player. If you reopen the episode later, it instantly resumes from the exact second you left off!
+- **Smart Auto-Sync (AniSkip integration):** Connect your AniList account, and AniGUI will automatically update your "Currently Watching" progress when you finish an episode. We use the AniSkip API to dynamically fetch the exact timestamp of the ending song, guaranteeing that your progress is only updated when you actually finish the episode!
+- **Related Media:** Instantly jump to prequels, sequels, spin-offs, and movies from any anime's info page.
 
-## Main features
+## 📦 Prerequisites (Windows)
 
-- Browse trending anime and search the catalog in real time
-- Connect an AniList account for watch progress and status sync
-- Play episodes through ani-cli and mpv from the desktop app
-- Download episodes directly to a chosen folder
-- See related anime entries such as sequels, prequels, movies, and spin-offs
+Because AniGUI acts as a beautiful graphical shell for `ani-cli` and `mpv`, you must have them installed on your system. We highly recommend using **Scoop** to install them in one click.
 
-## Requirements
+1. **Install Git for Windows (Bash)**
+   AniGUI relies on Git Bash to execute the streaming commands. 
+   Download it here: [Git for Windows](https://git-scm.com/download/win)
 
-| Tool | Purpose |
-|---|---|
-| [Git for Windows](https://git-scm.com/download/win) | Provides the bash shell ani-cli expects on Windows |
-| [ani-cli](https://github.com/pystardust/ani-cli) | Streams and downloads episodes |
-| [mpv](https://mpv.io/) | Video player used by ani-cli |
-| [Node.js LTS](https://nodejs.org/) | Frontend tooling for the Tauri app |
-| [Rust](https://rustup.rs/) | Backend and Tauri build toolchain |
-| [Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) | Native build support on Windows |
+2. **Install Scoop (Optional but recommended)**
+   Open PowerShell and run:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+   ```
 
-## Running locally
+3. **Install MPV and Ani-cli**
+   Using Scoop, simply run:
+   ```powershell
+   scoop install mpv
+   scoop install ani-cli
+   ```
 
-1. Open a terminal in `anigui-tauri/`.
-2. Install dependencies with `npm install`.
-3. Start development mode with `npm run tauri dev`.
+## 🚀 Running the App
 
-The first launch takes longer because Rust dependencies must compile. Later launches are much faster.
+*Note: Pre-compiled binaries will be available in the Releases tab soon. For now, you can run it from source!*
 
-## Project layout
+1. Clone this repository.
+2. Ensure you have [Node.js](https://nodejs.org/) and [Rust](https://rustup.rs/) installed.
+3. Open a terminal in the `anigui-tauri/` folder.
+4. Run `npm install` to install frontend dependencies.
+5. Run `npm run tauri dev` to launch the app!
 
-| Path | Description |
-|---|---|
-| `anigui-tauri/src/` | Frontend app code and styles |
-| `anigui-tauri/src-tauri/` | Rust backend for the desktop shell |
-| `anicli_gui.py` | Python prototype retained for reference |
-| `anigui_redesign.html` | UI concept and layout exploration |
+## ⚙️ Settings Setup
 
-## Notes
+Once you launch AniGUI for the first time, click the **Settings ⚙️** icon in the bottom left corner:
+1. Ensure the **Bash Path** is pointing to your `bash.exe` (usually `C:\Program Files\Git\bin\bash.exe`).
+2. Log in with your **AniList Account** using the secure PIN method to enable progress syncing and the "Continue Watching" tab!
+3. Toggle on **Auto-Sync Progress to AniList** to enable the smart AniSkip tracker.
 
-- AniList login and token handling are managed from inside the app.
-- Episode playback relies on a valid bash path on Windows, usually from Git for Windows.
-- If you publish screenshots on GitHub, add them under a new `assets/` or `docs/` folder and reference them from this readme.
+## 🛠️ Architecture
+- **Frontend:** TypeScript, HTML, Vanilla CSS (Custom Design System).
+- **Backend:** Rust (Tauri), executing shell commands via Git Bash.
+- **Tracking:** Native `mpv` Lua scripts communicating with the Rust backend via JSON AppData files.
+
+---
+*Disclaimer: AniGUI is a graphical wrapper for ani-cli. It does not host or store any copyrighted video material.*
