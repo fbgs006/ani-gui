@@ -64,4 +64,7 @@ Once you launch AniGUI for the first time, click the **Settings ⚙️** icon in
 - **Tracking:** Native `mpv` Lua scripts communicating with the Rust backend via JSON AppData files.
 
 ---
+
+*Note: This project is AI-assisted and human-managed: AI helped with parts of the implementation and documentation, while the structure, review, and ongoing decisions are guided by a person.*
+
 *Disclaimer: AniGUI is a graphical wrapper for ani-cli. It does not host or store any copyrighted video material.*
