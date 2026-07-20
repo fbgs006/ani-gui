@@ -43,9 +43,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: app-v__VERSION__
+          tagName: v__VERSION__
           releaseName: 'AniGUI v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
           projectPath: anigui-tauri
+
+      - name: Upload Portable Executable
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Copy-Item src-tauri/target/release/anigui-tauri.exe src-tauri/target/release/AniGUI-Portable.exe
+          gh release upload ${{ github.ref_name }} src-tauri/target/release/AniGUI-Portable.exe
