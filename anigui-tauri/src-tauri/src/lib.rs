@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const ANILIST_CLIENT_ID: &str = "45898";
@@ -408,11 +408,23 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
             safe_title, ep_num, quality
         );
         let start = std::time::Instant::now();
+        
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.minimize();
+        }
+
         let _ = std::process::Command::new(&bash_path)
             .args(["-lc", &cmd])
             .status();
 
         *player_active.lock().unwrap() = false;
+
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        
+        let _ = app.emit("player_closed", ());
 
         let elapsed = start.elapsed().as_secs_f64();
         if token.is_some() {

@@ -429,6 +429,12 @@ async function playEpisode(ep: number) {
     return;
   }
   playLaunching = true;
+  document.body.insertAdjacentHTML("beforeend", `<div id="player-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10,13,24,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
+    <div style="width: 48px; height: 48px; border: 4px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div>
+    <div style="font-size: 24px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px;">Video Player is Running</div>
+    <div style="color: var(--text2); font-size: 14px; text-align: center; max-width: 320px; line-height: 1.5;">The app has been minimized to ensure the video player takes focus. Close the video player to return here.</div>
+  </div>`);
+
   const title = selectedMedia.title.english || selectedMedia.title.romaji;
   toast(`Launching EP ${ep}…`, "info");
 
@@ -439,8 +445,9 @@ async function playEpisode(ep: number) {
 
   if (result.error) {
     toast(result.error, "error");
+    playLaunching = false;
+    document.getElementById("player-overlay")?.remove();
   }
-  playLaunching = false;
 }
 
 async function downloadEpisode(ep: number) {
@@ -881,6 +888,11 @@ async function init() {
   });
 
   // Tauri events
+  await listen("player_closed", () => {
+    playLaunching = false;
+    document.getElementById("player-overlay")?.remove();
+  });
+
   await listen("playback_finished", (event: any) => {
     const { epNum, elapsed } = event.payload;
     if (elapsed > 60 && config.anilist_token) {
