@@ -40,11 +40,12 @@ interface Config {
   confirm_before_sync: boolean;
   anilist_token: string;
   download_dir: string;
+  theme: string;
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let config: Config = { bash_path: "", quality: "best", confirm_before_sync: true, anilist_token: "", download_dir: "" };
+let config: Config = { bash_path: "", quality: "best", confirm_before_sync: true, anilist_token: "", download_dir: "", theme: "purple" };
 let currentTab: "continue" | "trending" | "search" | "planning" | "downloads" = "trending";
 let sidebarItems: Media[] = [];
 let sidebarPage = 1;
@@ -57,6 +58,7 @@ let viewerName: string | null = null;
 let playLaunching = false;
 let activePlayingAnimeId: number | null = null;
 let activePlayingEp: number | null = null;
+let downloadLogBuffer: string = "";
 
 // ─── Season Helpers ───────────────────────────────────────────────────────────
 
@@ -104,13 +106,13 @@ async function loadDownloads() {
   sidebar.innerHTML = `<div class="sidebar-empty">Downloads are shown in the main panel.</div>`;
   
   const main = document.getElementById("main-panel")!;
-  main.innerHTML = `<div class="welcome"><h2>⬇ Downloads Manager</h2><p>Loading your downloaded episodes...</p></div>`;
+  main.innerHTML = `<div class="downloads-empty"><h2>⬇ Downloads</h2><p>Loading your downloaded episodes...</p></div>`;
   
   try {
     const files = await invoke<any>("get_downloads");
     
     if (!files || !files.length) {
-      main.innerHTML = `<div class="welcome"><h2>⬇ Downloads Manager</h2><p style="color:var(--text2)">You haven't downloaded any episodes yet.</p></div>`;
+      main.innerHTML = `<div class="downloads-empty"><h2>No Downloads Yet</h2><p>Episodes you download will appear here.</p></div>`;
       return;
     }
     
@@ -120,12 +122,12 @@ async function loadDownloads() {
       let animeName = "Unknown Anime";
       let epNum = "?";
       
-      const match = f.name.match(/^(.*?)_Episode_(\d+)/i);
+      const match = f.name.match(/^(.*?)[\s_]+Episode[\s_]+(\d+)/i);
       if (match) {
         animeName = match[1].replace(/_/g, " ").trim();
         epNum = match[2];
       } else {
-        animeName = f.name;
+        animeName = f.name.replace(/\.(mp4|mkv)$/i, "");
       }
       
       if (!groups[animeName]) groups[animeName] = [];
@@ -136,7 +138,7 @@ async function loadDownloads() {
     let html = `<div class="downloads-container"><h2 style="margin-bottom: 20px; font-weight: 500;">Offline Downloads</h2>`;
     
     for (const [anime, eps] of Object.entries(groups)) {
-      html += `<div class="download-group"><div class="download-group-title">${anime}</div><div class="download-items">`;
+      html += `<div class="download-group"><div class="download-group-title" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" onclick="searchAndLoadAnime('${anime.replace(/'/g, "\\'")}')">${anime}</div><div class="download-items">`;
       
       eps.sort((a, b) => {
         const nA = parseInt(a.epNum) || 0;
@@ -148,8 +150,10 @@ async function loadDownloads() {
         const sizeMb = (ep.size / (1024 * 1024)).toFixed(1);
         html += `
           <div class="download-item">
-            <span class="download-ep-num">Episode ${ep.epNum}</span>
-            <span class="download-size">${sizeMb} MB</span>
+            <div class="download-info" style="display: flex; align-items: center;">
+              <span class="download-ep-num">Episode ${ep.epNum}</span>
+              <span class="download-size">${sizeMb} MB</span>
+            </div>
             <div class="download-actions">
               <button class="btn btn-primary btn-play-dl" data-path="${ep.path}">▶ Play</button>
               <button class="btn btn-outline btn-del-dl" data-path="${ep.path}">🗑 Delete</button>
@@ -187,6 +191,24 @@ async function loadDownloads() {
     main.innerHTML = `<div class="welcome"><p style="color:var(--red)">Failed to load downloads: ${err}</p></div>`;
   }
 }
+
+// ─── Search and Load Anime helper ─────────────────────────────────────────────
+
+(window as any).searchAndLoadAnime = async (title: string) => {
+  const main = document.getElementById("main-panel")!;
+  main.innerHTML = `<div class="browse-loading"><div class="spinner"></div><div>Searching...</div></div>`;
+  
+  try {
+    const result = await invoke<any>("advanced_search", { search: title });
+    if (result?.data?.Page?.media?.length > 0) {
+      selectMedia(result.data.Page.media[0]);
+    } else {
+      main.innerHTML = `<div class="downloads-empty"><h2>Not Found</h2><p>Could not find ${title} on AniList.</p></div>`;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+};
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -279,6 +301,16 @@ function renderApp() {
             <input class="form-input" id="s-dldir" type="text" placeholder="~/Downloads" />
             <button class="btn btn-outline" id="s-browse" style="font-size:12px;padding:8px 14px;white-space:nowrap;">Browse…</button>
           </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Theme</label>
+          <select class="form-input status-select" id="s-theme" style="border-radius:8px;">
+            <option value="purple">Purple (Default)</option>
+            <option value="crimson">Crimson</option>
+            <option value="ocean">Ocean</option>
+            <option value="emerald">Emerald</option>
+            <option value="monochrome">Monochrome</option>
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Quality</label>
@@ -626,6 +658,7 @@ async function downloadEpisode(ep: number) {
   const log = $("#download-log") as HTMLElement;
   const status = $("#download-status") as HTMLElement;
   log.innerHTML = "";
+  downloadLogBuffer = "";
   status.textContent = "Starting download…";
 
   await invoke("start_download", { title, epNum: ep });
@@ -1009,6 +1042,7 @@ async function init() {
 
   // Load config
   config = await invoke<Config>("get_config");
+  document.body.setAttribute("data-theme", config.theme);
   updateLoginStatus();
   fetchViewerName(); // non-blocking, updates header when done
 
@@ -1115,12 +1149,24 @@ async function init() {
     }
   });
 
-  await listen("download_log", (event: any) => {
+  await listen("download_chunk", (event: any) => {
     const log = document.getElementById("download-log");
     if (log) {
-      const line = el("div");
-      line.textContent = event.payload.line;
-      log.appendChild(line);
+      downloadLogBuffer += event.payload.chunk;
+      const clean = downloadLogBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      const finalLines = clean.split('\n').map(l => {
+          const parts = l.split('\r');
+          return parts[parts.length - 1];
+      });
+      
+      log.innerHTML = "";
+      for (const fl of finalLines) {
+          if (fl.trim() !== "") {
+              const div = el("div");
+              div.textContent = fl;
+              log.appendChild(div);
+          }
+      }
       log.scrollTop = log.scrollHeight;
     }
   });
@@ -1141,6 +1187,7 @@ function openSettings() {
   (document.getElementById("s-token") as HTMLInputElement).value = config.anilist_token;
   (document.getElementById("s-bash") as HTMLInputElement).value = config.bash_path;
   (document.getElementById("s-dldir") as HTMLInputElement).value = config.download_dir;
+  (document.getElementById("s-theme") as HTMLSelectElement).value = config.theme || "purple";
   (document.getElementById("s-quality") as HTMLSelectElement).value = config.quality;
   document.getElementById("modal-settings")!.classList.add("open");
 }
@@ -1149,9 +1196,14 @@ async function saveSettings() {
   config.anilist_token = (document.getElementById("s-token") as HTMLInputElement).value.trim();
   config.bash_path = (document.getElementById("s-bash") as HTMLInputElement).value.trim();
   config.download_dir = (document.getElementById("s-dldir") as HTMLInputElement).value.trim();
+  config.theme = (document.getElementById("s-theme") as HTMLSelectElement).value;
   config.quality = (document.getElementById("s-quality") as HTMLSelectElement).value;
 
   await invoke("save_config", { config });
+  
+  // Apply theme immediately
+  document.body.setAttribute("data-theme", config.theme);
+  
   viewerName = null; // reset; will re-fetch
   updateLoginStatus();
   await fetchViewerName();

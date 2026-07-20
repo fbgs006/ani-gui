@@ -493,11 +493,13 @@ fn start_download(state: State<AppState>, app: AppHandle, title: String, ep_num:
             }
         };
 
-        if let Some(stdout) = child.stdout.take() {
-            use std::io::BufRead;
-            let reader = std::io::BufReader::new(stdout);
-            for line in reader.lines().flatten() {
-                let _ = app.emit("download_log", serde_json::json!({ "line": line }));
+        if let Some(mut stdout) = child.stdout.take() {
+            use std::io::Read;
+            let mut buf = [0u8; 1024];
+            while let Ok(n) = stdout.read(&mut buf) {
+                if n == 0 { break; }
+                let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = app.emit("download_chunk", serde_json::json!({ "chunk": chunk }));
             }
         }
 
@@ -629,18 +631,18 @@ fn get_downloads(state: State<AppState>) -> Value {
 }
 
 #[tauri::command]
-fn play_local_file(path: String) -> Value {
+fn play_local_file(path: String) -> Result<Value, String> {
     match open::that(&path) {
-        Ok(_) => serde_json::json!({ "success": true }),
-        Err(e) => serde_json::json!({ "error": e.to_string() }),
+        Ok(_) => Ok(serde_json::json!({ "success": true })),
+        Err(e) => Err(e.to_string()),
     }
 }
 
 #[tauri::command]
-fn delete_local_file(path: String) -> Value {
+fn delete_local_file(path: String) -> Result<Value, String> {
     match std::fs::remove_file(&path) {
-        Ok(_) => serde_json::json!({ "success": true }),
-        Err(e) => serde_json::json!({ "error": e.to_string() }),
+        Ok(_) => Ok(serde_json::json!({ "success": true })),
+        Err(e) => Err(e.to_string()),
     }
 }
 
