@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 const ANILIST_CLIENT_ID: &str = "45898";
@@ -20,6 +20,7 @@ struct Config {
 struct AppState {
     config: Mutex<Config>,
     config_path: std::path::PathBuf,
+    player_active: Arc<Mutex<bool>>,
 }
 
 fn get_config_path() -> std::path::PathBuf {
@@ -391,6 +392,14 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
 
     let quality = cfg.quality.clone().unwrap_or_else(|| "best".to_string());
     let token = cfg.anilist_token.clone();
+    let player_active = state.player_active.clone();
+    {
+        let mut active = player_active.lock().unwrap();
+        if *active {
+            return serde_json::json!({ "error": "A video player is already running." });
+        }
+        *active = true;
+    }
 
     std::thread::spawn(move || {
         let safe_title = title.replace('"', "");
@@ -399,9 +408,23 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
             safe_title, ep_num, quality
         );
         let start = std::time::Instant::now();
+        
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.minimize();
+        }
+
         let _ = std::process::Command::new(&bash_path)
             .args(["-lc", &cmd])
             .status();
+
+        *player_active.lock().unwrap() = false;
+
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        
+        let _ = app.emit("player_closed", ());
 
         let elapsed = start.elapsed().as_secs_f64();
         if token.is_some() {
@@ -539,6 +562,7 @@ pub fn run() {
         .manage(AppState {
             config: Mutex::new(config),
             config_path,
+            player_active: Arc::new(Mutex::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             get_config,

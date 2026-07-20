@@ -21,6 +21,7 @@ interface RelationEdge {
 interface Media {
   id: number;
   title: MediaTitle;
+  format?: string;
   episodes?: number;
   averageScore?: number;
   status: string;
@@ -49,11 +50,11 @@ let sidebarItems: Media[] = [];
 let sidebarPage = 1;
 let sidebarHasMore = false;
 let sidebarLoading = false;
-let viewMode: "welcome" | "browse" | "detail" = "welcome";
 let selectedMedia: Media | null = null;
 let selectedEp: number | null = null;
 let pendingSyncEp: number | null = null;
 let viewerName: string | null = null;
+let playLaunching = false;
 
 // ─── Season Helpers ───────────────────────────────────────────────────────────
 
@@ -109,8 +110,9 @@ function renderApp() {
       <input class="search-input" id="search-input" type="text" placeholder="Search anime…" autocomplete="off" />
     </div>
     <div class="header-actions">
-      <button class="btn-icon" id="btn-browse" title="Browse">
+      <button class="btn-icon btn-browse" id="btn-browse" title="Browse anime" aria-label="Browse anime">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Browse</span>
       </button>
       <button class="btn-icon" id="btn-settings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -346,6 +348,15 @@ function renderDetail() {
     ${renderRelations(m)}
   `;
 
+  // AniList does not always publish a total for airing shows. They can still
+  // be played, so offer the next episode and a manual episode picker.
+  if (!eps) {
+    const actions = main.querySelector<HTMLElement>(".action-row");
+    if (actions) {
+      actions.insertAdjacentHTML("afterbegin", `<button class="btn btn-primary" id="play-next">Play EP ${nextEp}</button><div class="manual-episode"><label for="manual-episode">Episode</label><input id="manual-episode" type="number" min="1" value="${nextEp}" /><button class="btn btn-outline" id="play-manual">Play</button></div>`);
+    }
+  }
+
   // Populate status select
   const sel = $("#detail-status") as HTMLSelectElement;
   if (m.mediaListEntry?.status) {
@@ -362,6 +373,11 @@ function renderDetail() {
 
   // Play next button
   document.getElementById("play-next")?.addEventListener("click", () => playEpisode(nextEp));
+  document.getElementById("play-manual")?.addEventListener("click", () => {
+    const episode = Number((document.getElementById("manual-episode") as HTMLInputElement).value);
+    if (Number.isInteger(episode) && episode > 0) playEpisode(episode);
+    else toast("Enter a valid episode number.", "error");
+  });
 
   // Episode grid
   if (eps) buildEpGrid(eps, progress);
@@ -408,6 +424,17 @@ function buildEpGrid(eps: number, progress: number) {
 
 async function playEpisode(ep: number) {
   if (!selectedMedia) return;
+  if (playLaunching) {
+    toast("A video player is already opening.", "info");
+    return;
+  }
+  playLaunching = true;
+  document.body.insertAdjacentHTML("beforeend", `<div id="player-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10,13,24,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
+    <div style="width: 48px; height: 48px; border: 4px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div>
+    <div style="font-size: 24px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px;">Video Player is Running</div>
+    <div style="color: var(--text2); font-size: 14px; text-align: center; max-width: 320px; line-height: 1.5;">The app has been minimized to ensure the video player takes focus. Close the video player to return here.</div>
+  </div>`);
+
   const title = selectedMedia.title.english || selectedMedia.title.romaji;
   toast(`Launching EP ${ep}…`, "info");
 
@@ -418,6 +445,8 @@ async function playEpisode(ep: number) {
 
   if (result.error) {
     toast(result.error, "error");
+    playLaunching = false;
+    document.getElementById("player-overlay")?.remove();
   }
 }
 
@@ -438,7 +467,6 @@ async function downloadEpisode(ep: number) {
 // ─── Browse View ──────────────────────────────────────────────────────────────
 
 async function loadBrowse() {
-  viewMode = "browse";
   selectedMedia = null;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.getElementById("btn-browse")!.classList.add("active");
@@ -475,7 +503,7 @@ async function loadBrowse() {
   }
 }
 
-function renderBrowse(rows: { title: string; items: Media[]; tab?: typeof currentTab }[]) {
+function renderBrowseLegacy(rows: { title: string; items: Media[]; tab?: typeof currentTab }[]) {
   const main = document.getElementById("main-panel")!;
   main.innerHTML = "";
 
@@ -511,7 +539,6 @@ function renderBrowse(rows: { title: string; items: Media[]; tab?: typeof curren
       `;
       card.addEventListener("click", () => {
         document.getElementById("btn-browse")!.classList.remove("active");
-        viewMode = "detail";
         currentTab = "trending";
         sidebarItems = row.items;
         renderSidebar();
@@ -536,9 +563,173 @@ function renderBrowse(rows: { title: string; items: Media[]; tab?: typeof curren
 
 // ─── Tab Loading ──────────────────────────────────────────────────────────────
 
+// Retained temporarily while the new browse layout rolls out; keeping it referenced avoids
+// breaking any future fallback that needs the compact layout.
+void renderBrowseLegacy;
+
+function renderBrowse(rows: { title: string; items: Media[]; tab?: typeof currentTab }[]) {
+  const main = document.getElementById("main-panel")!;
+  const allItems = rows.flatMap(row => row.items);
+  // Deduplicate items for grid view
+  const uniqueItemsMap = new Map<number, Media>();
+  allItems.forEach(item => uniqueItemsMap.set(item.id, item));
+  const uniqueItems = Array.from(uniqueItemsMap.values());
+  
+  const genres = ["All", "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi"];
+  
+  // State for active genres
+  const activeGenres = new Set<string>();
+  
+  main.innerHTML = `
+    <section class="browse-hero fade-in">
+      <div><span class="browse-kicker">DISCOVER ANIME</span><h1>Find your next <em>obsession.</em></h1><p>Fresh seasonal picks, upcoming shows, and the classics everyone keeps talking about.</p></div>
+      <div class="browse-stats"><strong>${uniqueItems.length}</strong><span>hand-picked shows<br>to explore</span></div>
+    </section>
+    <div class="browse-filters fade-in"><span class="filter-label">Browse by mood</span>${genres.map((genre, index) => `<button class="genre-filter${index === 0 ? " active" : ""}" data-genre="${genre}">${genre}</button>`).join("")}</div>
+    <div class="browse-content"></div>`;
+
+  const contentDiv = main.querySelector<HTMLElement>(".browse-content")!;
+  const years = [...new Set(uniqueItems.map(media => media.seasonYear).filter((year): year is number => Boolean(year)))].sort((a, b) => b - a);
+  const formats = [...new Set(uniqueItems.map(media => media.format).filter((format): format is string => Boolean(format)))].sort();
+  const advanced = el("div", "browse-advanced-filters fade-in");
+  advanced.innerHTML = `<input id="browse-title-filter" type="search" placeholder="Search titles or genres…" />
+    <select id="browse-year-filter"><option value="">Any year</option>${years.map(year => `<option value="${year}">${year}</option>`).join("")}</select>
+    <select id="browse-season-filter"><option value="">Any season</option><option value="WINTER">Winter</option><option value="SPRING">Spring</option><option value="SUMMER">Summer</option><option value="FALL">Fall</option></select>
+    <select id="browse-format-filter"><option value="">Any format</option>${formats.map(format => `<option value="${format}">${format.replace("_", " ")}</option>`).join("")}</select>
+    <select id="browse-sort-filter"><option value="default">Default Sort</option><option value="score_desc">Highest Rated</option><option value="score_asc">Lowest Rated</option><option value="year_desc">Newest</option><option value="year_asc">Oldest</option></select>
+    <button class="btn btn-outline" id="browse-clear-filters">Clear</button>`;
+  main.querySelector(".browse-filters")!.after(advanced);
+  
+  const titleFilter = advanced.querySelector<HTMLInputElement>("#browse-title-filter")!;
+  const yearFilter = advanced.querySelector<HTMLSelectElement>("#browse-year-filter")!;
+  const seasonFilter = advanced.querySelector<HTMLSelectElement>("#browse-season-filter")!;
+  const formatFilter = advanced.querySelector<HTMLSelectElement>("#browse-format-filter")!;
+  const sortFilter = advanced.querySelector<HTMLSelectElement>("#browse-sort-filter")!;
+  
+  const drawCard = (media: Media, rowItems?: Media[]) => {
+    const card = el("article", "browse-card");
+    const title = media.title.english || media.title.romaji;
+    const score = media.averageScore;
+    const format = media.format?.replace("_", " ") ?? "Anime";
+    const episodes = media.episodes ? `${media.episodes} eps` : "Coming soon";
+    card.innerHTML = `<img src="${media.coverImage.large || media.coverImage.medium}" alt="${title}" loading="lazy" onerror="this.style.opacity=0.3" /><div class="browse-card-overlay"><div class="browse-card-topline">${score ? `<span class="browse-card-score">★ ${score}%</span>` : ""}<span>${format}</span></div><span class="browse-card-title">${title}</span><span class="browse-card-year">${episodes}${media.seasonYear ? ` · ${media.seasonYear}` : ""}</span></div>`;
+    card.addEventListener("click", () => {
+      document.getElementById("btn-browse")!.classList.remove("active");
+      currentTab = "trending";
+      sidebarItems = rowItems || uniqueItems;
+      renderSidebar();
+      selectMedia(media);
+    });
+    return card;
+  };
+
+  const drawRows = () => {
+    contentDiv.innerHTML = "";
+    const query = titleFilter.value.trim().toLowerCase();
+    
+    const hasFilters = activeGenres.size > 0 || query || yearFilter.value || seasonFilter.value || formatFilter.value || sortFilter.value !== "default";
+    
+    if (hasFilters) {
+      // GRID VIEW
+      let matches = uniqueItems.filter(media => {
+        const title = (media.title.english || media.title.romaji).toLowerCase();
+        const searchableGenres = media.genres.join(" ").toLowerCase();
+        
+        let genreMatch = true;
+        if (activeGenres.size > 0) {
+          for (const g of activeGenres) {
+            if (!media.genres.includes(g)) {
+              genreMatch = false;
+              break;
+            }
+          }
+        }
+        
+        return genreMatch
+          && (!query || title.includes(query) || searchableGenres.includes(query))
+          && (!yearFilter.value || String(media.seasonYear) === yearFilter.value)
+          && (!seasonFilter.value || media.season === seasonFilter.value)
+          && (!formatFilter.value || media.format === formatFilter.value);
+      });
+      
+      if (sortFilter.value === "score_desc") {
+        matches.sort((a, b) => (b.averageScore || 0) - (a.averageScore || 0));
+      } else if (sortFilter.value === "score_asc") {
+        matches.sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0));
+      } else if (sortFilter.value === "year_desc") {
+        matches.sort((a, b) => (b.seasonYear || 0) - (a.seasonYear || 0));
+      } else if (sortFilter.value === "year_asc") {
+        matches.sort((a, b) => (a.seasonYear || 0) - (b.seasonYear || 0));
+      }
+      
+      if (!matches.length) {
+        contentDiv.innerHTML = `<div class="browse-empty">Nothing matches your current filters. Try relaxing them.</div>`;
+        return;
+      }
+      
+      const grid = el("div", "browse-grid fade-in");
+      matches.forEach(media => grid.appendChild(drawCard(media, matches)));
+      contentDiv.appendChild(grid);
+      
+    } else {
+      // ROWS VIEW
+      let rendered = 0;
+      for (const row of rows) {
+        if (!row.items.length) continue;
+        rendered++;
+        const section = el("section", "browse-section fade-in");
+        section.innerHTML = `<div class="browse-section-header"><span class="browse-section-title">${row.title}</span><span class="browse-count">${row.items.length} titles</span></div><div class="browse-scroll"></div>`;
+        const scroll = section.querySelector<HTMLElement>(".browse-scroll")!;
+        row.items.forEach(media => scroll.appendChild(drawCard(media, row.items)));
+        contentDiv.appendChild(section);
+      }
+      if (!rendered) contentDiv.innerHTML = `<div class="browse-empty">Nothing to show right now.</div>`;
+    }
+  };
+  
+  drawRows();
+  
+  main.querySelectorAll(".genre-filter").forEach(button => button.addEventListener("click", () => {
+    const genre = (button as HTMLElement).dataset.genre!;
+    if (genre === "All") {
+      activeGenres.clear();
+      main.querySelectorAll(".genre-filter").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+    } else {
+      const allBtn = main.querySelector('.genre-filter[data-genre="All"]')!;
+      allBtn.classList.remove("active");
+      
+      if (activeGenres.has(genre)) {
+        activeGenres.delete(genre);
+        button.classList.remove("active");
+        if (activeGenres.size === 0) allBtn.classList.add("active");
+      } else {
+        activeGenres.add(genre);
+        button.classList.add("active");
+      }
+    }
+    drawRows();
+  }));
+  
+  [titleFilter, yearFilter, seasonFilter, formatFilter, sortFilter].forEach(filter => filter.addEventListener("input", drawRows));
+  
+  advanced.querySelector("#browse-clear-filters")!.addEventListener("click", () => {
+    titleFilter.value = "";
+    yearFilter.value = "";
+    seasonFilter.value = "";
+    formatFilter.value = "";
+    sortFilter.value = "default";
+    activeGenres.clear();
+    main.querySelectorAll(".genre-filter").forEach(item => item.classList.remove("active"));
+    main.querySelector('.genre-filter[data-genre="All"]')!.classList.add("active");
+    drawRows();
+  });
+}
+
 async function loadTab(tab: typeof currentTab, query = "", page = 1) {
   if (page === 1) {
     currentTab = tab;
+    document.getElementById("btn-browse")?.classList.remove("active");
     sidebarPage = 1;
     sidebarItems = [];
     document.querySelectorAll(".tab-btn").forEach(b => {
@@ -697,6 +888,11 @@ async function init() {
   });
 
   // Tauri events
+  await listen("player_closed", () => {
+    playLaunching = false;
+    document.getElementById("player-overlay")?.remove();
+  });
+
   await listen("playback_finished", (event: any) => {
     const { epNum, elapsed } = event.payload;
     if (elapsed > 60 && config.anilist_token) {
