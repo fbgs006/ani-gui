@@ -424,10 +424,13 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
         );
         let start = std::time::Instant::now();
         
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.minimize();
-        }
-
+        let window_clone = app.get_webview_window("main");
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            if let Some(window) = window_clone {
+                let _ = window.minimize();
+            }
+        });
         let _ = std::process::Command::new(&bash_path)
             .args(["-lc", &cmd])
             .status();
@@ -464,10 +467,10 @@ fn start_download(state: State<AppState>, app: AppHandle, title: String, ep_num:
 
     let quality = cfg.quality.clone().unwrap_or_else(|| "best".to_string());
     let download_dir = cfg.download_dir.clone().unwrap_or_else(|| {
-        dirs_next::download_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string()
+        let mut d = dirs_next::download_dir().unwrap_or_default();
+        d.push("AniGUI");
+        let _ = std::fs::create_dir_all(&d);
+        d.to_string_lossy().to_string()
     });
 
     std::thread::spawn(move || {
@@ -589,6 +592,58 @@ async fn advanced_search(
     anilist_query(&q, serde_json::json!(vars), token.as_deref()).await
 }
 
+#[tauri::command]
+fn get_downloads(state: State<AppState>) -> Value {
+    let cfg = state.config.lock().unwrap().clone();
+    let download_dir = cfg.download_dir.clone().unwrap_or_else(|| {
+        let mut d = dirs_next::download_dir().unwrap_or_default();
+        d.push("AniGUI");
+        d.to_string_lossy().to_string()
+    });
+
+    let path = std::path::Path::new(&download_dir);
+    if !path.exists() {
+        return serde_json::json!([]);
+    }
+
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ext == "mp4" || ext == "mkv" {
+                        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        files.push(serde_json::json!({
+                            "name": name,
+                            "path": path.to_string_lossy().to_string(),
+                            "size": size,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    serde_json::json!(files)
+}
+
+#[tauri::command]
+fn play_local_file(path: String) -> Value {
+    match open::that(&path) {
+        Ok(_) => serde_json::json!({ "success": true }),
+        Err(e) => serde_json::json!({ "error": e.to_string() }),
+    }
+}
+
+#[tauri::command]
+fn delete_local_file(path: String) -> Value {
+    match std::fs::remove_file(&path) {
+        Ok(_) => serde_json::json!({ "success": true }),
+        Err(e) => serde_json::json!({ "error": e.to_string() }),
+    }
+}
+
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -611,6 +666,9 @@ pub fn run() {
             open_anilist_login,
             get_viewer_info,
             advanced_search,
+            get_downloads,
+            play_local_file,
+            delete_local_file,
             search_anime,
             get_trending,
             get_popular_this_season,

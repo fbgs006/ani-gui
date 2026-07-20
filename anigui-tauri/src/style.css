@@ -916,3 +916,17 @@ body.player-loading #play-next { pointer-events: none; opacity: 0.5; filter: gra
 
 .browse-grid { display: grid; grid-template-columns: repeat(auto-fill, 130px); gap: 16px; justify-content: center; padding: 10px 0 30px 0; }
 .browse-empty { grid-column: 1 / -1; text-align: center; color: var(--text2); padding: 40px; }
+
+/* --- Downloads ------------------------------------------------------------- */
+.downloads-container { padding: 20px; max-width: 900px; margin: 0 auto; }
+.download-group { margin-bottom: 24px; background: var(--bg3); border-radius: var(--radius); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.download-group-title { padding: 14px 20px; font-weight: 600; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); font-size: 15px; }
+.download-items { padding: 0 20px; }
+.download-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.download-item:last-child { border-bottom: none; }
+.download-ep-num { font-weight: 500; font-size: 14px; }
+.download-size { color: var(--text2); font-size: 13px; margin-left: 20px; flex-grow: 1; }
+.download-actions { display: flex; gap: 8px; }
+.download-actions .btn { font-size: 12px; padding: 6px 12px; }
+
+.sidebar-empty { color: var(--text2); font-size: 13px; text-align: center; padding: 30px 20px; line-height: 1.5; }

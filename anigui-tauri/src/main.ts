@@ -45,7 +45,7 @@ interface Config {
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let config: Config = { bash_path: "", quality: "best", confirm_before_sync: true, anilist_token: "", download_dir: "" };
-let currentTab: "continue" | "trending" | "search" | "planning" = "trending";
+let currentTab: "continue" | "trending" | "search" | "planning" | "downloads" = "trending";
 let sidebarItems: Media[] = [];
 let sidebarPage = 1;
 let sidebarHasMore = false;
@@ -90,6 +90,104 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = "") 
   return e;
 }
 
+// ─── Downloads View ──────────────────────────────────────────────────────────
+
+async function loadDownloads() {
+  currentTab = "downloads";
+  document.getElementById("btn-browse")?.classList.remove("active");
+  document.getElementById("btn-downloads")?.classList.add("active");
+  document.querySelectorAll(".tab-btn").forEach(b => {
+    b.classList.toggle("active", false);
+  });
+  
+  const sidebar = document.getElementById("sidebar-list")!;
+  sidebar.innerHTML = `<div class="sidebar-empty">Downloads are shown in the main panel.</div>`;
+  
+  const main = document.getElementById("main-panel")!;
+  main.innerHTML = `<div class="welcome"><h2>⬇ Downloads Manager</h2><p>Loading your downloaded episodes...</p></div>`;
+  
+  try {
+    const files = await invoke<any>("get_downloads");
+    
+    if (!files || !files.length) {
+      main.innerHTML = `<div class="welcome"><h2>⬇ Downloads Manager</h2><p style="color:var(--text2)">You haven't downloaded any episodes yet.</p></div>`;
+      return;
+    }
+    
+    // Group files by Anime Title
+    const groups: Record<string, any[]> = {};
+    for (const f of files) {
+      let animeName = "Unknown Anime";
+      let epNum = "?";
+      
+      const match = f.name.match(/^(.*?)_Episode_(\d+)/i);
+      if (match) {
+        animeName = match[1].replace(/_/g, " ").trim();
+        epNum = match[2];
+      } else {
+        animeName = f.name;
+      }
+      
+      if (!groups[animeName]) groups[animeName] = [];
+      f.epNum = epNum;
+      groups[animeName].push(f);
+    }
+    
+    let html = `<div class="downloads-container"><h2 style="margin-bottom: 20px; font-weight: 500;">Offline Downloads</h2>`;
+    
+    for (const [anime, eps] of Object.entries(groups)) {
+      html += `<div class="download-group"><div class="download-group-title">${anime}</div><div class="download-items">`;
+      
+      eps.sort((a, b) => {
+        const nA = parseInt(a.epNum) || 0;
+        const nB = parseInt(b.epNum) || 0;
+        return nA - nB;
+      });
+      
+      for (const ep of eps) {
+        const sizeMb = (ep.size / (1024 * 1024)).toFixed(1);
+        html += `
+          <div class="download-item">
+            <span class="download-ep-num">Episode ${ep.epNum}</span>
+            <span class="download-size">${sizeMb} MB</span>
+            <div class="download-actions">
+              <button class="btn btn-primary btn-play-dl" data-path="${ep.path}">▶ Play</button>
+              <button class="btn btn-outline btn-del-dl" data-path="${ep.path}">🗑 Delete</button>
+            </div>
+          </div>
+        `;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div>`;
+    
+    main.innerHTML = html;
+    
+    main.querySelectorAll(".btn-play-dl").forEach(b => b.addEventListener("click", async (e) => {
+      const path = (e.currentTarget as HTMLElement).dataset.path!;
+      await invoke("play_local_file", { path });
+    }));
+    
+    main.querySelectorAll(".btn-del-dl").forEach(b => b.addEventListener("click", async (e) => {
+      const path = (e.currentTarget as HTMLElement).dataset.path!;
+      const btn = e.currentTarget as HTMLButtonElement;
+      btn.disabled = true;
+      btn.textContent = "Deleting...";
+      try {
+        await invoke("delete_local_file", { path });
+        loadDownloads(); // Refresh
+      } catch (err) {
+        toast(`Failed to delete: ${err}`, "error");
+        btn.disabled = false;
+        btn.textContent = "🗑 Delete";
+      }
+    }));
+    
+  } catch (err) {
+    main.innerHTML = `<div class="welcome"><p style="color:var(--red)">Failed to load downloads: ${err}</p></div>`;
+  }
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function toast(msg: string, type: "success" | "error" | "info" = "info") {
@@ -115,6 +213,10 @@ function renderApp() {
       <button class="btn-icon btn-browse" id="btn-browse" title="Browse anime" aria-label="Browse anime">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span>Browse</span>
+      </button>
+      <button class="btn-icon btn-browse" id="btn-downloads" title="Downloads Manager" aria-label="Downloads Manager">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Downloads</span>
       </button>
       <button class="btn-icon" id="btn-settings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -534,6 +636,7 @@ async function downloadEpisode(ep: number) {
 async function loadBrowse() {
   selectedMedia = null;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("btn-downloads")?.classList.remove("active");
   document.getElementById("btn-browse")!.classList.add("active");
 
   const main = document.getElementById("main-panel")!;
@@ -834,6 +937,7 @@ async function loadTab(tab: typeof currentTab, query = "", page = 1) {
   if (page === 1) {
     currentTab = tab;
     document.getElementById("btn-browse")?.classList.remove("active");
+    document.getElementById("btn-downloads")?.classList.remove("active");
     sidebarPage = 1;
     sidebarItems = [];
     document.querySelectorAll(".tab-btn").forEach(b => {
@@ -916,8 +1020,9 @@ async function init() {
   document.getElementById("tab-continue")!.addEventListener("click", () => loadTab("continue"));
   document.getElementById("tab-planning")!.addEventListener("click", () => loadTab("planning"));
 
-  // Browse button
+  // Browse & Downloads buttons
   document.getElementById("btn-browse")!.addEventListener("click", () => loadBrowse());
+  document.getElementById("btn-downloads")!.addEventListener("click", loadDownloads);
 
   // Sidebar infinite scroll
   document.getElementById("sidebar-list")!.addEventListener("scroll", (e) => {
