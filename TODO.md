@@ -1,7 +1,7 @@
 # Upcoming Features Roadmap
 
 ## ?? UI Polish
-- [ ] Overhaul the Downloads page UI (better padding, colors, empty state).
+- [x] Overhaul the Downloads page UI (better padding, colors, empty state).
 - [x] Implement App Themes (allow changing accent colors via Settings).
 
 ## ?? Automated Tracking
