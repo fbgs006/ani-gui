@@ -55,6 +55,8 @@ let selectedEp: number | null = null;
 let pendingSyncEp: number | null = null;
 let viewerName: string | null = null;
 let playLaunching = false;
+let activePlayingAnimeId: number | null = null;
+let activePlayingEp: number | null = null;
 
 // ─── Season Helpers ───────────────────────────────────────────────────────────
 
@@ -372,12 +374,29 @@ function renderDetail() {
   });
 
   // Play next button
-  document.getElementById("play-next")?.addEventListener("click", () => playEpisode(nextEp));
-  document.getElementById("play-manual")?.addEventListener("click", () => {
-    const episode = Number((document.getElementById("manual-episode") as HTMLInputElement).value);
-    if (Number.isInteger(episode) && episode > 0) playEpisode(episode);
-    else toast("Enter a valid episode number.", "error");
-  });
+  const nextBtn = document.getElementById("play-next");
+  if (nextBtn) {
+    nextBtn.addEventListener("click", (e) => playEpisode(nextEp, e.currentTarget as HTMLElement));
+    if (activePlayingAnimeId === m.id && activePlayingEp === nextEp) {
+      nextBtn.dataset.originalText = nextBtn.innerHTML;
+      nextBtn.innerHTML = "⏳ Playing...";
+      nextBtn.classList.add("playing-active");
+    }
+  }
+  
+  const manualBtn = document.getElementById("play-manual");
+  if (manualBtn) {
+    manualBtn.addEventListener("click", (e) => {
+      const episode = Number((document.getElementById("manual-episode") as HTMLInputElement).value);
+      if (Number.isInteger(episode) && episode > 0) playEpisode(episode, e.currentTarget as HTMLElement);
+      else toast("Enter a valid episode number.", "error");
+    });
+    if (activePlayingAnimeId === m.id && activePlayingEp === nextEp) {
+      manualBtn.dataset.originalText = manualBtn.innerHTML;
+      manualBtn.innerHTML = "⏳ Playing...";
+      manualBtn.classList.add("playing-active");
+    }
+  }
 
   // Episode grid
   if (eps) buildEpGrid(eps, progress);
@@ -405,15 +424,34 @@ function buildEpGrid(eps: number, progress: number) {
         document.querySelectorAll(".ep-chip").forEach(c => c.classList.remove("selected"));
         chip.classList.add("selected");
         selectedEp = i;
-        document.getElementById("ep-actions")?.classList.remove("hidden");
+        const actions = document.getElementById("ep-actions");
+        if (actions) {
+          actions.classList.remove("hidden");
+          const playBtn = document.getElementById("btn-play-selected");
+          if (playBtn) {
+            if (selectedMedia?.id === activePlayingAnimeId && i === activePlayingEp) {
+              playBtn.dataset.originalText = playBtn.dataset.originalText || playBtn.innerHTML;
+              playBtn.innerHTML = "⏳ Playing...";
+              playBtn.classList.add("playing-active");
+            } else {
+              if (playBtn.dataset.originalText) {
+                playBtn.innerHTML = playBtn.dataset.originalText;
+                playBtn.classList.remove("playing-active");
+              }
+            }
+          }
+        }
       }
     });
-    chip.addEventListener("dblclick", () => playEpisode(i));
+    chip.addEventListener("dblclick", (e) => playEpisode(i, e.currentTarget as HTMLElement));
+    if (selectedMedia?.id === activePlayingAnimeId && i === activePlayingEp) {
+      chip.classList.add("playing-active");
+    }
     grid.appendChild(chip);
   }
 
-  document.getElementById("btn-play-selected")?.addEventListener("click", () => {
-    if (selectedEp) playEpisode(selectedEp);
+  document.getElementById("btn-play-selected")?.addEventListener("click", (e) => {
+    if (selectedEp) playEpisode(selectedEp, e.currentTarget as HTMLElement);
   });
   document.getElementById("btn-dl-selected")?.addEventListener("click", () => {
     if (selectedEp) downloadEpisode(selectedEp);
@@ -422,18 +460,30 @@ function buildEpGrid(eps: number, progress: number) {
 
 // ─── Playback ─────────────────────────────────────────────────────────────────
 
-async function playEpisode(ep: number) {
+async function playEpisode(ep: number, triggerElement?: HTMLElement) {
   if (!selectedMedia) return;
   if (playLaunching) {
     toast("A video player is already opening.", "info");
     return;
   }
   playLaunching = true;
-  document.body.insertAdjacentHTML("beforeend", `<div id="player-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10,13,24,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
-    <div style="width: 48px; height: 48px; border: 4px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 24px;"></div>
-    <div style="font-size: 24px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px;">Video Player is Running</div>
-    <div style="color: var(--text2); font-size: 14px; text-align: center; max-width: 320px; line-height: 1.5;">The app has been minimized to ensure the video player takes focus. Close the video player to return here.</div>
-  </div>`);
+  activePlayingAnimeId = selectedMedia.id;
+  activePlayingEp = ep;
+  
+  // Visual feedback on buttons
+  const playBtn = document.getElementById("btn-play-selected");
+  const nextBtn = document.getElementById("play-next");
+  const chip = document.querySelector(`.ep-chip[data-ep="${ep}"]`);
+  
+  if (triggerElement) {
+    triggerElement.dataset.originalText = triggerElement.dataset.originalText || triggerElement.innerHTML;
+    triggerElement.innerHTML = "⏳ Playing...";
+    triggerElement.classList.add("playing-active");
+  } else {
+    if (playBtn && playBtn.style.display !== "none") playBtn.innerHTML = "⏳ Playing...";
+    if (nextBtn) nextBtn.innerHTML = "⏳ Playing...";
+  }
+  if (chip) chip.classList.add("playing-active");
 
   const title = selectedMedia.title.english || selectedMedia.title.romaji;
   toast(`Launching EP ${ep}…`, "info");
@@ -446,8 +496,23 @@ async function playEpisode(ep: number) {
   if (result.error) {
     toast(result.error, "error");
     playLaunching = false;
-    document.getElementById("player-overlay")?.remove();
+    resetPlayButtons();
   }
+}
+
+function resetPlayButtons() {
+  activePlayingAnimeId = null;
+  activePlayingEp = null;
+  const playBtn = document.getElementById("btn-play-selected");
+  if (playBtn) playBtn.innerHTML = "▶ Play";
+  const nextBtn = document.getElementById("play-next");
+  if (nextBtn) nextBtn.innerHTML = "▶ Play Next";
+  document.querySelectorAll(".playing-active").forEach(el => {
+    el.classList.remove("playing-active");
+    if ((el as HTMLElement).dataset.originalText) {
+      el.innerHTML = (el as HTMLElement).dataset.originalText!;
+    }
+  });
 }
 
 async function downloadEpisode(ep: number) {
@@ -623,56 +688,95 @@ function renderBrowse(rows: { title: string; items: Media[]; tab?: typeof curren
     return card;
   };
 
-  const drawRows = () => {
-    contentDiv.innerHTML = "";
-    const query = titleFilter.value.trim().toLowerCase();
-    
-    const hasFilters = activeGenres.size > 0 || query || yearFilter.value || seasonFilter.value || formatFilter.value || sortFilter.value !== "default";
-    
-    if (hasFilters) {
-      // GRID VIEW
-      let matches = uniqueItems.filter(media => {
-        const title = (media.title.english || media.title.romaji).toLowerCase();
-        const searchableGenres = media.genres.join(" ").toLowerCase();
-        
-        let genreMatch = true;
-        if (activeGenres.size > 0) {
-          for (const g of activeGenres) {
-            if (!media.genres.includes(g)) {
-              genreMatch = false;
-              break;
-            }
-          }
-        }
-        
-        return genreMatch
-          && (!query || title.includes(query) || searchableGenres.includes(query))
-          && (!yearFilter.value || String(media.seasonYear) === yearFilter.value)
-          && (!seasonFilter.value || media.season === seasonFilter.value)
-          && (!formatFilter.value || media.format === formatFilter.value);
+  let searchPage = 1;
+  let hasNextSearchPage = false;
+  let searchMatches: Media[] = [];
+  let searchLoading = false;
+  let searchDebounce: number | null = null;
+
+  const performSearch = async (loadMore = false) => {
+    if (!loadMore) {
+      searchPage = 1;
+      searchMatches = [];
+      contentDiv.innerHTML = `<div class="browse-empty">Searching AniList...</div>`;
+    } else {
+      searchPage++;
+      const btn = contentDiv.querySelector("#load-more-btn");
+      if (btn) btn.innerHTML = "Loading...";
+    }
+    searchLoading = true;
+
+    try {
+      const query = titleFilter.value.trim();
+      const genres = Array.from(activeGenres);
+      const year = yearFilter.value ? Number(yearFilter.value) : null;
+      const season = seasonFilter.value || null;
+      const format = formatFilter.value || null;
+      let sort = null;
+      if (sortFilter.value === "score_desc") sort = ["SCORE_DESC"];
+      else if (sortFilter.value === "score_asc") sort = ["SCORE_ASC"];
+      else if (sortFilter.value === "year_desc") sort = ["START_DATE_DESC"];
+      else if (sortFilter.value === "year_asc") sort = ["START_DATE_ASC"];
+
+      const res = await invoke<any>("advanced_search", {
+        search: query || null,
+        genres: genres.length ? genres : null,
+        year,
+        season,
+        format,
+        sort,
+        page: searchPage
       });
+
+      const pageInfo = res?.data?.Page?.pageInfo;
+      hasNextSearchPage = pageInfo?.hasNextPage ?? false;
+      const media = res?.data?.Page?.media ?? [];
       
-      if (sortFilter.value === "score_desc") {
-        matches.sort((a, b) => (b.averageScore || 0) - (a.averageScore || 0));
-      } else if (sortFilter.value === "score_asc") {
-        matches.sort((a, b) => (a.averageScore || 0) - (b.averageScore || 0));
-      } else if (sortFilter.value === "year_desc") {
-        matches.sort((a, b) => (b.seasonYear || 0) - (a.seasonYear || 0));
-      } else if (sortFilter.value === "year_asc") {
-        matches.sort((a, b) => (a.seasonYear || 0) - (b.seasonYear || 0));
+      if (!loadMore) {
+        searchMatches = media;
+      } else {
+        searchMatches.push(...media);
       }
-      
-      if (!matches.length) {
+
+      if (!searchMatches.length) {
         contentDiv.innerHTML = `<div class="browse-empty">Nothing matches your current filters. Try relaxing them.</div>`;
         return;
       }
-      
+
+      contentDiv.innerHTML = "";
       const grid = el("div", "browse-grid fade-in");
-      matches.forEach(media => grid.appendChild(drawCard(media, matches)));
+      searchMatches.forEach((m: Media) => grid.appendChild(drawCard(m, searchMatches)));
       contentDiv.appendChild(grid);
-      
+
+      if (hasNextSearchPage) {
+        const loadMoreBtn = el("button", "btn");
+        loadMoreBtn.className = "btn btn-outline";
+        loadMoreBtn.id = "load-more-btn";
+        loadMoreBtn.style.margin = "20px auto";
+        loadMoreBtn.style.display = "block";
+        loadMoreBtn.textContent = "Load More Results";
+        loadMoreBtn.addEventListener("click", () => {
+          if (!searchLoading) performSearch(true);
+        });
+        contentDiv.appendChild(loadMoreBtn);
+      }
+    } catch (e) {
+      toast(`Search failed: ${e}`, "error");
+    } finally {
+      searchLoading = false;
+    }
+  };
+
+  const drawRows = () => {
+    const query = titleFilter.value.trim().toLowerCase();
+    const hasFilters = activeGenres.size > 0 || query || yearFilter.value || seasonFilter.value || formatFilter.value || sortFilter.value !== "default";
+    
+    if (hasFilters) {
+      if (searchDebounce) clearTimeout(searchDebounce);
+      searchDebounce = window.setTimeout(() => performSearch(false), 400);
     } else {
-      // ROWS VIEW
+      if (searchDebounce) clearTimeout(searchDebounce);
+      contentDiv.innerHTML = "";
       let rendered = 0;
       for (const row of rows) {
         if (!row.items.length) continue;
@@ -890,7 +994,7 @@ async function init() {
   // Tauri events
   await listen("player_closed", () => {
     playLaunching = false;
-    document.getElementById("player-overlay")?.remove();
+    resetPlayButtons();
   });
 
   await listen("playback_finished", (event: any) => {

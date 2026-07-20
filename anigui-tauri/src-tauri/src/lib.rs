@@ -127,6 +127,21 @@ fragment mediaFields on Media {
 }
 "#;
 
+fn advanced_search_query() -> String {
+    format!(
+        r#"{} query ($search: String, $genres: [String], $year: Int, $season: MediaSeason, $format: MediaFormat, $sort: [MediaSort], $page: Int) {{
+  Page(page: $page, perPage: 20) {{
+    pageInfo {{ hasNextPage }}
+    media(search: $search, genre_in: $genres, seasonYear: $year, season: $season, format: $format, type: ANIME, sort: $sort) {{
+      ...mediaFields
+      mediaListEntry {{ id progress status }}
+    }}
+  }}
+}}"#,
+        MEDIA_FIELDS
+    )
+}
+
 fn search_query() -> String {
     format!(
         r#"{} query ($search: String, $page: Int) {{
@@ -548,6 +563,32 @@ fn browse_folder() -> String {
     String::new()
 }
 
+#[tauri::command]
+async fn advanced_search(
+    state: State<'_, AppState>,
+    search: Option<String>,
+    genres: Option<Vec<String>>,
+    year: Option<i64>,
+    season: Option<String>,
+    format: Option<String>,
+    sort: Option<Vec<String>>,
+    page: Option<i64>,
+) -> Result<Value, String> {
+    let q = advanced_search_query();
+    let mut vars = serde_json::Map::new();
+    if let Some(s) = search { if !s.is_empty() { vars.insert("search".to_string(), serde_json::json!(s)); } }
+    if let Some(g) = genres { if !g.is_empty() { vars.insert("genres".to_string(), serde_json::json!(g)); } }
+    if let Some(y) = year { vars.insert("year".to_string(), serde_json::json!(y)); }
+    if let Some(s) = season { if !s.is_empty() { vars.insert("season".to_string(), serde_json::json!(s)); } }
+    if let Some(f) = format { if !f.is_empty() { vars.insert("format".to_string(), serde_json::json!(f)); } }
+    let sort_val = sort.unwrap_or_else(|| vec!["TRENDING_DESC".to_string()]);
+    vars.insert("sort".to_string(), serde_json::json!(sort_val));
+    vars.insert("page".to_string(), serde_json::json!(page.unwrap_or(1)));
+
+    let token = state.config.lock().unwrap().anilist_token.clone();
+    anilist_query(&q, serde_json::json!(vars), token.as_deref()).await
+}
+
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -569,6 +610,7 @@ pub fn run() {
             save_config,
             open_anilist_login,
             get_viewer_info,
+            advanced_search,
             search_anime,
             get_trending,
             get_popular_this_season,
