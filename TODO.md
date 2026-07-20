@@ -2,7 +2,7 @@
 
 ## ?? UI Polish
 - [ ] Overhaul the Downloads page UI (better padding, colors, empty state).
-- [ ] Implement App Themes (allow changing accent colors via Settings).
+- [x] Implement App Themes (allow changing accent colors via Settings).
 
 ## ?? Automated Tracking
 - [ ] Add an "Auto-Sync" toggle in Settings.
