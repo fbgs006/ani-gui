@@ -56,6 +56,7 @@ let sidebarLoading = false;
 let selectedMedia: Media | null = null;
 let selectedEp: number | null = null;
 let pendingSyncEp: number | null = null;
+let pendingSyncAnimeId: number | null = null;
 let viewerName: string | null = null;
 let playLaunching = false;
 let activePlayingAnimeId: number | null = null;
@@ -1104,23 +1105,28 @@ async function init() {
 
   // Sync confirm
   document.getElementById("sync-yes")!.addEventListener("click", async () => {
-    if (!selectedMedia || !pendingSyncEp) return;
+    if (!pendingSyncAnimeId || !pendingSyncEp) return;
+    const syncAnimeId = pendingSyncAnimeId;
+    const syncEp = pendingSyncEp;
     hideSyncBar();
+    pendingSyncEp = null;
+    pendingSyncAnimeId = null;
     try {
-      await invoke("sync_progress", { mediaId: selectedMedia.id, epNum: pendingSyncEp });
-      // Update local progress
-      if (selectedMedia.mediaListEntry) {
-        selectedMedia.mediaListEntry.progress = pendingSyncEp;
-      } else {
-        selectedMedia.mediaListEntry = { id: 0, progress: pendingSyncEp, status: "CURRENT" };
+      await invoke("sync_progress", { mediaId: syncAnimeId, epNum: syncEp });
+      // Update local progress only if the user is still viewing the same anime
+      if (selectedMedia?.id === syncAnimeId) {
+        if (selectedMedia.mediaListEntry) {
+          selectedMedia.mediaListEntry.progress = syncEp;
+        } else {
+          selectedMedia.mediaListEntry = { id: 0, progress: syncEp, status: "CURRENT" };
+        }
+        renderDetail();
+        renderSidebar();
       }
-      renderDetail();
-      renderSidebar();
-      toast(`Synced EP ${pendingSyncEp}!`, "success");
+      toast(`Synced EP ${syncEp}!`, "success");
     } catch (e: any) {
       toast("Sync failed: " + e, "error");
     }
-    pendingSyncEp = null;
   });
   document.getElementById("sync-no")!.addEventListener("click", () => {
     hideSyncBar();
@@ -1141,15 +1147,26 @@ async function init() {
   });
 
   await listen("playback_finished", async (event: any) => {
-    const { epNum, percent, timePos } = event.payload;
+    const { epNum, percent, timePos, elapsed } = event.payload;
     if (!config.anilist_token) return;
 
+    // Don't sync if the player was open for less than 60 seconds — prevents a false
+    // trigger when the user skips to the outro immediately after opening the episode.
+    if ((elapsed ?? 0) < 60) return;
+
+    // Capture these NOW before any awaits — the user may navigate to a different
+    // anime while the AniSkip fetch is in flight, changing activePlayingAnimeId.
+    const capturedAnimeId = activePlayingAnimeId;
+    const capturedEp = activePlayingEp;
+
     let isFinished = percent > 0.85;
-    
-    // Try to get AniSkip data if we have the MAL ID
-    if (selectedMedia?.idMal && timePos > 0) {
+
+    // Try to get AniSkip data if we have the MAL ID.
+    // Use capturedAnimeId to look up idMal in case selectedMedia has changed.
+    const playedMedia = sidebarItems.find(m => m.id === capturedAnimeId) ?? selectedMedia;
+    if (playedMedia?.idMal && timePos > 0) {
       try {
-        const skipRes = await fetch(`https://api.aniskip.com/v2/skip-times/${selectedMedia.idMal}/${epNum}?types=ed&episodeLength=0`);
+        const skipRes = await fetch(`https://api.aniskip.com/v2/skip-times/${playedMedia.idMal}/${epNum}?types=ed&episodeLength=0`);
         if (skipRes.ok) {
           const skipData = await skipRes.json();
           const ed = skipData.results?.find((r: any) => r.skipType === "ed");
@@ -1165,15 +1182,18 @@ async function init() {
 
     if (isFinished) {
       if (config.auto_sync) {
-        // Auto-sync silently in background
+        // Auto-sync silently in background using the captured IDs
         try {
-          await invoke("sync_progress", { mediaId: activePlayingAnimeId, epNum: activePlayingEp });
-          toast(`Auto-synced Episode ${activePlayingEp}`, "success");
+          await invoke("sync_progress", { mediaId: capturedAnimeId, epNum: capturedEp });
+          toast(`Auto-synced Episode ${capturedEp}`, "success");
         } catch (err: any) {
           toast(`Failed to auto-sync: ${err}`, "error");
         }
       } else if (config.confirm_before_sync) {
+        // Store the captured IDs so the sync-yes handler uses the correct anime
+        // even if the user has already clicked something else in the sidebar.
         pendingSyncEp = epNum;
+        pendingSyncAnimeId = capturedAnimeId;
         showSyncBar(epNum);
       }
     }
@@ -1354,3 +1374,78 @@ function attachRelationClicks() {
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 window.addEventListener("DOMContentLoaded", init);
+
+// ─── Dev-only Sync Test Helper ────────────────────────────────────────────────
+// Only available in `tauri dev` builds (stripped in production).
+// Usage from the browser devtools console:
+//   __testSync()              ← uses currently selected anime + next episode
+//   __testSync(5)             ← forces episode 5
+//   __testSync(5, 0.9)        ← forces ep 5, 90% watched (triggers 85% fallback)
+//   __testSync(5, 0.9, 1260)  ← forces ep 5, 90% watched, timePos 1260s (21 min)
+
+if (import.meta.env.DEV) {
+  (window as any).__testSync = async (
+    overrideEp?: number,
+    overridePercent = 0.92,
+    overrideTimePos = 1300,
+  ) => {
+    if (!selectedMedia) {
+      console.warn("[testSync] No anime selected. Click one in the sidebar first.");
+      return;
+    }
+    const ep    = overrideEp ?? (selectedMedia.mediaListEntry?.progress ?? 0) + 1;
+    const fakePayload = { epNum: ep, percent: overridePercent, timePos: overrideTimePos, elapsed: 9999 };
+    console.info("[testSync] Simulating playback_finished →", fakePayload, "for:", selectedMedia.title.romaji);
+
+    // Temporarily set the active IDs so captured* consts resolve correctly
+    activePlayingAnimeId = selectedMedia.id;
+    activePlayingEp = ep;
+
+    // Re-use the same logic as the real listener by emitting a fake Tauri event
+    // into the handler. We do this by directly dispatching through the internal
+    // listen callback — simplest approach is to just duplicate the check here.
+    let isFinished = overridePercent > 0.85;
+
+    const playedMedia = sidebarItems.find(m => m.id === selectedMedia!.id) ?? selectedMedia;
+    if (playedMedia?.idMal && overrideTimePos > 0) {
+      try {
+        const skipRes = await fetch(
+          `https://api.aniskip.com/v2/skip-times/${playedMedia.idMal}/${ep}?types=ed&episodeLength=0`
+        );
+        if (skipRes.ok) {
+          const skipData = await skipRes.json();
+          const ed = skipData.results?.find((r: any) => r.skipType === "ed");
+          if (ed?.interval?.startTime) {
+            isFinished = overrideTimePos >= (ed.interval.startTime - 10);
+            console.info(`[testSync] AniSkip ED starts at ${ed.interval.startTime}s → isFinished = ${isFinished}`);
+          } else {
+            console.info("[testSync] AniSkip returned no ED data, falling back to percent check.");
+          }
+        }
+      } catch (err) {
+        console.warn("[testSync] AniSkip fetch failed:", err);
+      }
+    }
+
+    if (isFinished) {
+      if (config.auto_sync) {
+        try {
+          await invoke("sync_progress", { mediaId: selectedMedia!.id, epNum: ep });
+          toast(`[DEV] Auto-synced Episode ${ep}`, "success");
+          console.info("[testSync] Auto-sync fired successfully.");
+        } catch (err) {
+          toast(`[DEV] Auto-sync failed: ${err}`, "error");
+        }
+      } else if (config.confirm_before_sync) {
+        pendingSyncEp = ep;
+        pendingSyncAnimeId = selectedMedia!.id;
+        showSyncBar(ep);
+        console.info("[testSync] Sync confirm bar shown. Click 'Yes' to complete.");
+      }
+    } else {
+      console.info(`[testSync] Episode NOT considered finished (percent=${overridePercent}, isFinished=${isFinished}). Try a higher overridePercent or a timePos near the ED.`);
+      toast(`[DEV] Not finished — percent=${(overridePercent * 100).toFixed(0)}%`, "info");
+    }
+  };
+  console.info("%c[AniGUI Dev] __testSync() is available. Type __testSync() in the console to test auto-sync.", "color: #a855f7; font-weight: bold;");
+}

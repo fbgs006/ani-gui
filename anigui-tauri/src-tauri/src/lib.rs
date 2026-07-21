@@ -714,9 +714,11 @@ local appdata = os.getenv("APPDATA")
 if not appdata then return end
 
 local anigui_dir = appdata .. "/AniGUI"
--- Ensure directory exists (in Lua on Windows we can just run a silent mkdir)
-os.execute('mkdir "' .. anigui_dir .. '" >nul 2>&1')
+-- Ensure directory exists. Wrap in pcall so sandboxed mpv builds (e.g. Scoop)
+-- that block os.execute don't crash the entire script on startup.
+pcall(function() os.execute('mkdir "' .. anigui_dir .. '" >nul 2>&1') end)
 local timestamps_file = anigui_dir .. "/timestamps.json"
+local last_watched_file = anigui_dir .. "/last_watched.json"
 
 local function read_json()
     local f = io.open(timestamps_file, "r")
@@ -766,13 +768,13 @@ mp.add_periodic_timer(5, function()
             end
         end
         
-        -- Also track the last played stats so the backend knows if it was actually finished
+        -- Track the last played stats so the backend knows if the episode was finished.
         local stats = {
             percent = time / duration,
             duration = duration,
             time = time
         }
-        local stats_file = io.open(json_path:gsub("timestamps%.json", "last_watched.json"), "w")
+        local stats_file = io.open(last_watched_file, "w")
         if stats_file then
             stats_file:write(utils.format_json(stats))
             stats_file:close()
