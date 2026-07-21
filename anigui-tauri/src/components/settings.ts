@@ -12,6 +12,7 @@ export function openSettings() {
   (document.getElementById("s-theme") as HTMLSelectElement).value = state.config.theme || "purple";
   (document.getElementById("s-quality") as HTMLSelectElement).value = state.config.quality || "best";
   (document.getElementById("s-autosync") as HTMLInputElement).checked = state.config.auto_sync || false;
+  (document.getElementById("s-dub") as HTMLInputElement).checked = state.config.dub || false;
   document.getElementById("modal-settings")!.classList.add("open");
 }
 
@@ -22,6 +23,7 @@ export async function saveSettings() {
   state.config.theme         = (document.getElementById("s-theme") as HTMLSelectElement).value;
   state.config.quality       = (document.getElementById("s-quality") as HTMLSelectElement).value;
   state.config.auto_sync     = (document.getElementById("s-autosync") as HTMLInputElement).checked;
+  state.config.dub           = (document.getElementById("s-dub") as HTMLInputElement).checked;
 
   await invoke("save_config", { config: state.config });
 

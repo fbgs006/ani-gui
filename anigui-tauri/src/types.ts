@@ -42,6 +42,7 @@ export interface Config {
   download_dir: string;
   theme: string;
   auto_sync: boolean;
+  dub: boolean;
 }
 
 export type TabName = "continue" | "trending" | "search" | "planning" | "downloads";

@@ -17,6 +17,7 @@ struct Config {
     download_dir: Option<String>,
     theme: Option<String>,
     auto_sync: Option<bool>,
+    dub: Option<bool>,
 }
 
 struct AppState {
@@ -288,6 +289,7 @@ fn get_config(state: State<AppState>) -> Value {
         "quality": cfg.quality.clone().unwrap_or_else(|| "best".to_string()),
         "confirm_before_sync": cfg.confirm_before_sync.unwrap_or(true),
         "auto_sync": cfg.auto_sync.unwrap_or(false),
+        "dub": cfg.dub.unwrap_or(false),
         "theme": cfg.theme.clone().unwrap_or_else(|| "purple".to_string()),
         "anilist_token": cfg.anilist_token.clone().unwrap_or_default(),
         "download_dir": cfg.download_dir.clone().unwrap_or_else(|| {
@@ -322,6 +324,9 @@ fn save_config(state: State<AppState>, config: Value) -> bool {
     }
     if let Some(v) = config.get("auto_sync").and_then(|v| v.as_bool()) {
         cfg.auto_sync = Some(v);
+    }
+    if let Some(v) = config.get("dub").and_then(|v| v.as_bool()) {
+        cfg.dub = Some(v);
     }
     save_config_to_disk(&state.config_path, &cfg);
     true
@@ -429,9 +434,10 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
 
     std::thread::spawn(move || {
         let safe_title = title.replace('"', "");
+        let dub_flag = if cfg.dub.unwrap_or(false) { " --dub" } else { "" };
         let cmd = format!(
-            r#"ani-cli "{}" -S 1 -e {} -q {} --exit-after-play"#,
-            safe_title, ep_num, quality
+            r#"ani-cli "{}" -S 1 -e {} -q {}{} --exit-after-play"#,
+            safe_title, ep_num, quality, dub_flag
         );
         let start = std::time::Instant::now();
         
@@ -506,9 +512,10 @@ fn start_download(state: State<AppState>, app: AppHandle, title: String, ep_num:
 
     std::thread::spawn(move || {
         let safe_title = title.replace('"', "");
+        let dub_flag = if cfg.dub.unwrap_or(false) { " --dub" } else { "" };
         let cmd = format!(
-            r#"cd "{}" && ani-cli "{}" -S 1 -e {} -q {} -d"#,
-            download_dir, safe_title, ep_num, quality
+            r#"cd "{}" && ani-cli "{}" -S 1 -e {} -q {}{} -d"#,
+            download_dir, safe_title, ep_num, quality, dub_flag
         );
 
         let mut child = match std::process::Command::new(&bash_path)
