@@ -32,3 +32,6 @@ env/
 # System files
 .DS_Store
 Thumbs.db
+
+# Local release notes (not tracked by git)
+release-notes/
