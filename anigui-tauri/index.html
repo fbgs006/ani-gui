@@ -3,14 +3,145 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AniGUI</title>
+    <title>AniGUI — Anime Player & Tracker</title>
+    <meta name="description" content="AniGUI – watch, track and sync anime progress with AniList from your desktop." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+
+      <!-- ── Header ─────────────────────────────────────────────────────────── -->
+      <header class="header">
+        <span class="logo">⬡ AniGUI</span>
+        <div class="search-wrap">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input class="search-input" id="search-input" type="text" placeholder="Search anime…" autocomplete="off" />
+        </div>
+        <div class="header-actions">
+          <button class="btn-icon btn-browse" id="btn-browse" title="Browse anime" aria-label="Browse anime">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Browse</span>
+          </button>
+          <button class="btn-icon btn-browse" id="btn-downloads" title="Downloads Manager" aria-label="Downloads Manager">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Downloads</span>
+          </button>
+          <button class="btn-icon" id="btn-settings" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <div class="login-status" id="login-status">
+            <span class="dot"></span>
+            <span id="login-label">Not logged in</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
+      <aside class="sidebar">
+        <div class="sidebar-tabs">
+          <button class="tab-btn active" id="tab-trending" data-tab="trending">Trending</button>
+          <button class="tab-btn" id="tab-continue" data-tab="continue">Watching</button>
+          <button class="tab-btn" id="tab-planning" data-tab="planning">Planning</button>
+        </div>
+        <div class="sidebar-list" id="sidebar-list"></div>
+      </aside>
+
+      <!-- ── Main Panel ─────────────────────────────────────────────────────── -->
+      <main class="main" id="main-panel">
+        <div class="welcome">
+          <h2>AniGUI</h2>
+          <p>Pick an anime from the sidebar to get started, or search for something.</p>
+        </div>
+      </main>
+
+      <!-- ── Toast Container ────────────────────────────────────────────────── -->
+      <div class="toast-container" id="toast-container"></div>
+
+      <!-- ── Sync Confirm Bar ───────────────────────────────────────────────── -->
+      <div class="sync-confirm" id="sync-confirm">
+        <p>Finished episode <strong id="sync-ep-label"></strong>. Sync to AniList?</p>
+        <button class="btn btn-primary" id="sync-yes" style="padding:6px 14px;font-size:12px;">Yes</button>
+        <button class="btn btn-outline" id="sync-no" style="padding:6px 14px;font-size:12px;">Skip</button>
+      </div>
+
+      <!-- ── Settings Modal ─────────────────────────────────────────────────── -->
+      <div class="modal-overlay" id="modal-settings">
+        <div class="modal">
+          <div class="modal-header">
+            <span class="modal-title">Settings</span>
+            <button class="btn-icon" id="close-settings">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">AniList Token</label>
+              <input class="form-input" id="s-token" type="password" placeholder="Paste token here…" />
+              <button class="btn btn-outline" id="s-open-anilist" style="align-self:flex-start;margin-top:4px;font-size:12px;padding:6px 14px;">Open AniList Login →</button>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bash / Git Bash Path</label>
+              <input class="form-input" id="s-bash" type="text" placeholder="e.g. C:\Program Files\Git\bin\bash.exe" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Download Directory</label>
+              <div class="form-row">
+                <input class="form-input" id="s-dldir" type="text" placeholder="~/Downloads" />
+                <button class="btn btn-outline" id="s-browse" style="font-size:12px;padding:8px 14px;white-space:nowrap;">Browse…</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Theme</label>
+              <select class="form-input status-select" id="s-theme" style="border-radius:8px;">
+                <option value="purple">Purple (Default)</option>
+                <option value="crimson">Crimson</option>
+                <option value="ocean">Ocean</option>
+                <option value="emerald">Emerald</option>
+                <option value="monochrome">Monochrome</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Quality</label>
+              <select class="form-input status-select" id="s-quality" style="border-radius:8px;">
+                <option value="best">Best</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+                <option value="360">360p</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
+              <label class="form-label" style="margin-bottom:0;">Auto-Sync Progress to AniList</label>
+              <input type="checkbox" id="s-autosync" style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent);" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline" id="cancel-settings">Cancel</button>
+            <button class="btn btn-primary" id="save-settings">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Download Modal ─────────────────────────────────────────────────── -->
+      <div class="modal-overlay" id="modal-download">
+        <div class="modal">
+          <div class="modal-header">
+            <span class="modal-title">Downloading…</span>
+            <button class="btn-icon" id="close-download">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="download-log" id="download-log"></div>
+            <p id="download-status" style="font-size:12px;color:var(--text3);text-align:center;"></p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-outline" id="close-download2">Close</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#app -->
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

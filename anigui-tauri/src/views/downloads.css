@@ -1,0 +1,33 @@
+/* ─── Downloads View ────────────────────────────────────────────────────────── */
+
+.downloads-container { padding: 40px; max-width: 1000px; margin: 0 auto; }
+.downloads-empty { text-align: center; margin-top: 100px; color: var(--text2); }
+.downloads-empty h2 { color: var(--text); margin-bottom: 12px; font-size: 24px; font-weight: 600; }
+.downloads-empty p { font-size: 15px; }
+
+.download-group { margin-bottom: 30px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+.download-group-title { padding: 18px 24px; font-weight: 700; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 16px; color: var(--accent); cursor: pointer; transition: opacity 0.2s; }
+.download-group-title:hover { opacity: 0.8; }
+.download-items { padding: 0; }
+.download-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--border); transition: background 0.2s ease; }
+.download-item:hover { background: rgba(255,255,255,0.02); }
+.download-item:last-child { border-bottom: none; }
+.download-ep-num { font-weight: 600; font-size: 15px; color: var(--text); }
+.download-size { color: var(--text2); font-size: 13px; margin-left: 8px; }
+.download-actions { display: flex; gap: 12px; }
+.download-actions .btn { font-size: 13px; padding: 8px 16px; font-weight: 500; transition: transform 0.1s ease, background 0.2s ease; }
+.download-actions .btn:hover { transform: scale(1.05); }
+
+/* Download modal log */
+.download-log {
+  background: #080a0f;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--green);
+  height: 200px;
+  overflow-y: auto;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+}
