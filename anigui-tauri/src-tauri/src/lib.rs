@@ -15,6 +15,9 @@ struct Config {
     confirm_before_sync: Option<bool>,
     anilist_token: Option<String>,
     download_dir: Option<String>,
+    theme: Option<String>,
+    auto_sync: Option<bool>,
+    dub: Option<bool>,
 }
 
 struct AppState {
@@ -103,6 +106,7 @@ async fn anilist_query(
 const MEDIA_FIELDS: &str = r#"
 fragment mediaFields on Media {
   id
+  idMal
   title { romaji english }
   episodes
   averageScore
@@ -193,8 +197,8 @@ fn current_query() -> String {
 }
 
 const UPDATE_MUTATION: &str = r#"
-mutation ($mediaId: Int, $progress: Int) {
-  SaveMediaListEntry(mediaId: $mediaId, progress: $progress) {
+mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
+  SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
     id progress status
   }
 }"#;
@@ -284,6 +288,9 @@ fn get_config(state: State<AppState>) -> Value {
         "bash_path": bash.unwrap_or_default(),
         "quality": cfg.quality.clone().unwrap_or_else(|| "best".to_string()),
         "confirm_before_sync": cfg.confirm_before_sync.unwrap_or(true),
+        "auto_sync": cfg.auto_sync.unwrap_or(false),
+        "dub": cfg.dub.unwrap_or(false),
+        "theme": cfg.theme.clone().unwrap_or_else(|| "purple".to_string()),
         "anilist_token": cfg.anilist_token.clone().unwrap_or_default(),
         "download_dir": cfg.download_dir.clone().unwrap_or_else(|| {
             dirs_next::download_dir()
@@ -311,6 +318,15 @@ fn save_config(state: State<AppState>, config: Value) -> bool {
     }
     if let Some(v) = config.get("download_dir").and_then(|v| v.as_str()) {
         cfg.download_dir = if v.is_empty() { None } else { Some(v.to_string()) };
+    }
+    if let Some(v) = config.get("theme").and_then(|v| v.as_str()) {
+        cfg.theme = Some(v.to_string());
+    }
+    if let Some(v) = config.get("auto_sync").and_then(|v| v.as_bool()) {
+        cfg.auto_sync = Some(v);
+    }
+    if let Some(v) = config.get("dub").and_then(|v| v.as_bool()) {
+        cfg.dub = Some(v);
     }
     save_config_to_disk(&state.config_path, &cfg);
     true
@@ -372,7 +388,7 @@ async fn sync_progress(state: State<'_, AppState>, media_id: i64, ep_num: i64) -
     let token = token.ok_or("Not logged in")?;
     anilist_query(
         UPDATE_MUTATION,
-        serde_json::json!({ "mediaId": media_id, "progress": ep_num }),
+        serde_json::json!({ "mediaId": media_id, "progress": ep_num, "status": "CURRENT" }),
         Some(&token),
     )
     .await
@@ -418,16 +434,20 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
 
     std::thread::spawn(move || {
         let safe_title = title.replace('"', "");
+        let dub_flag = if cfg.dub.unwrap_or(false) { " --dub" } else { "" };
         let cmd = format!(
-            r#"ani-cli "{}" -S 1 -e {} -q {} --exit-after-play"#,
-            safe_title, ep_num, quality
+            r#"ani-cli "{}" -S 1 -e {} -q {}{} --exit-after-play"#,
+            safe_title, ep_num, quality, dub_flag
         );
         let start = std::time::Instant::now();
         
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.minimize();
-        }
-
+        let window_clone = app.get_webview_window("main");
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            if let Some(window) = window_clone {
+                let _ = window.minimize();
+            }
+        });
         let _ = std::process::Command::new(&bash_path)
             .args(["-lc", &cmd])
             .status();
@@ -442,10 +462,30 @@ fn play_episode(state: State<AppState>, app: AppHandle, title: String, ep_num: i
         let _ = app.emit("player_closed", ());
 
         let elapsed = start.elapsed().as_secs_f64();
+        let mut percent = 0.0;
+        let mut time_pos = 0.0;
+        
+        if let Some(mut path) = dirs_next::data_dir() {
+            path.push("AniGUI");
+            let stats_file = path.join("last_watched.json");
+            if let Ok(content) = std::fs::read_to_string(&stats_file) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(p) = json["percent"].as_f64() {
+                        percent = p;
+                    }
+                    if let Some(t) = json["time"].as_f64() {
+                        time_pos = t;
+                    }
+                }
+            }
+        }
+
         if token.is_some() {
             let _ = app.emit("playback_finished", serde_json::json!({
                 "epNum": ep_num,
-                "elapsed": elapsed
+                "elapsed": elapsed,
+                "percent": percent,
+                "timePos": time_pos
             }));
         }
     });
@@ -464,17 +504,18 @@ fn start_download(state: State<AppState>, app: AppHandle, title: String, ep_num:
 
     let quality = cfg.quality.clone().unwrap_or_else(|| "best".to_string());
     let download_dir = cfg.download_dir.clone().unwrap_or_else(|| {
-        dirs_next::download_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string()
+        let mut d = dirs_next::download_dir().unwrap_or_default();
+        d.push("AniGUI");
+        let _ = std::fs::create_dir_all(&d);
+        d.to_string_lossy().to_string()
     });
 
     std::thread::spawn(move || {
         let safe_title = title.replace('"', "");
+        let dub_flag = if cfg.dub.unwrap_or(false) { " --dub" } else { "" };
         let cmd = format!(
-            r#"cd "{}" && ani-cli "{}" -S 1 -e {} -q {} -d"#,
-            download_dir, safe_title, ep_num, quality
+            r#"cd "{}" && ani-cli "{}" -S 1 -e {} -q {}{} -d"#,
+            download_dir, safe_title, ep_num, quality, dub_flag
         );
 
         let mut child = match std::process::Command::new(&bash_path)
@@ -490,11 +531,13 @@ fn start_download(state: State<AppState>, app: AppHandle, title: String, ep_num:
             }
         };
 
-        if let Some(stdout) = child.stdout.take() {
-            use std::io::BufRead;
-            let reader = std::io::BufReader::new(stdout);
-            for line in reader.lines().flatten() {
-                let _ = app.emit("download_log", serde_json::json!({ "line": line }));
+        if let Some(mut stdout) = child.stdout.take() {
+            use std::io::Read;
+            let mut buf = [0u8; 1024];
+            while let Ok(n) = stdout.read(&mut buf) {
+                if n == 0 { break; }
+                let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = app.emit("download_chunk", serde_json::json!({ "chunk": chunk }));
             }
         }
 
@@ -589,10 +632,172 @@ async fn advanced_search(
     anilist_query(&q, serde_json::json!(vars), token.as_deref()).await
 }
 
+#[tauri::command]
+fn get_downloads(state: State<AppState>) -> Value {
+    let cfg = state.config.lock().unwrap().clone();
+    let download_dir = cfg.download_dir.clone().unwrap_or_else(|| {
+        let mut d = dirs_next::download_dir().unwrap_or_default();
+        d.push("AniGUI");
+        d.to_string_lossy().to_string()
+    });
+
+    let path = std::path::Path::new(&download_dir);
+    if !path.exists() {
+        return serde_json::json!([]);
+    }
+
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ext == "mp4" || ext == "mkv" {
+                        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        files.push(serde_json::json!({
+                            "name": name,
+                            "path": path.to_string_lossy().to_string(),
+                            "size": size,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    serde_json::json!(files)
+}
+
+#[tauri::command]
+fn play_local_file(path: String) -> Result<Value, String> {
+    match open::that(&path) {
+        Ok(_) => Ok(serde_json::json!({ "success": true })),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn delete_local_file(path: String) -> Result<Value, String> {
+    match std::fs::remove_file(&path) {
+        Ok(_) => Ok(serde_json::json!({ "success": true })),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+// ─── MPV Script Installation ────────────────────────────────────────────────────
+
+fn get_mpv_scripts_dir() -> Option<std::path::PathBuf> {
+    let mut script_dir = None;
+    if let Ok(path) = which::which("mpv") {
+        if let Some(parent) = path.parent() {
+            let portable = parent.join("portable_config");
+            if portable.exists() {
+                script_dir = Some(portable.join("scripts"));
+            }
+        }
+    }
+    
+    if script_dir.is_none() {
+        if let Some(mut path) = dirs_next::data_dir() {
+            path.push("mpv");
+            path.push("scripts");
+            script_dir = Some(path);
+        }
+    }
+    script_dir
+}
+
+fn install_mpv_script() {
+    if let Some(path) = get_mpv_scripts_dir() {
+        let _ = std::fs::create_dir_all(&path);
+        let script_path = path.join("anigui-tracker.lua");
+        
+        let script_content = r#"
+local mp = require 'mp'
+local utils = require 'mp.utils'
+local msg = require 'mp.msg'
+
+local appdata = os.getenv("APPDATA")
+if not appdata then return end
+
+local anigui_dir = appdata .. "/AniGUI"
+-- Ensure directory exists. Wrap in pcall so sandboxed mpv builds (e.g. Scoop)
+-- that block os.execute don't crash the entire script on startup.
+pcall(function() os.execute('mkdir "' .. anigui_dir .. '" >nul 2>&1') end)
+local timestamps_file = anigui_dir .. "/timestamps.json"
+local last_watched_file = anigui_dir .. "/last_watched.json"
+
+local function read_json()
+    local f = io.open(timestamps_file, "r")
+    if not f then return {} end
+    local content = f:read("*all")
+    f:close()
+    if not content or content == "" then return {} end
+    local data, err = utils.parse_json(content)
+    if not data then return {} end
+    return data
+end
+
+local function write_json(data)
+    local f = io.open(timestamps_file, "w")
+    if not f then return end
+    f:write(utils.format_json(data))
+    f:close()
+end
+
+mp.register_event("file-loaded", function()
+    local title = mp.get_property("media-title")
+    if not title then return end
+    
+    local data = read_json()
+    if data[title] then
+        local time = data[title]
+        mp.commandv("seek", tostring(time), "absolute")
+        mp.osd_message("AniGUI: Resumed at " .. tostring(math.floor(time)) .. "s")
+    end
+end)
+
+mp.add_periodic_timer(5, function()
+    local title = mp.get_property("media-title")
+    local time = mp.get_property_number("time-pos")
+    local duration = mp.get_property_number("duration")
+    
+    if title and time and duration then
+        if time > 10 and (duration - time) > 10 then
+            local data = read_json()
+            data[title] = time
+            write_json(data)
+        elseif (duration - time) <= 10 then
+            local data = read_json()
+            if data[title] then
+                data[title] = nil
+                write_json(data)
+            end
+        end
+        
+        -- Track the last played stats so the backend knows if the episode was finished.
+        local stats = {
+            percent = time / duration,
+            duration = duration,
+            time = time
+        }
+        local stats_file = io.open(last_watched_file, "w")
+        if stats_file then
+            stats_file:write(utils.format_json(stats))
+            stats_file:close()
+        end
+    end
+end)
+"#;
+        let _ = std::fs::write(script_path, script_content);
+    }
+}
+
 // ─── App Entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_mpv_script();
     let config_path = get_config_path();
     let config = load_config_from_disk(&config_path);
 
@@ -611,6 +816,9 @@ pub fn run() {
             open_anilist_login,
             get_viewer_info,
             advanced_search,
+            get_downloads,
+            play_local_file,
+            delete_local_file,
             search_anime,
             get_trending,
             get_popular_this_season,

@@ -1,0 +1,48 @@
+// ─── AniGUI Shared Types ─────────────────────────────────────────────────────
+
+export interface MediaTitle { romaji: string; english?: string; }
+export interface CoverImage { medium: string; large: string; }
+export interface MediaListEntry { id: number; progress: number; status: string; }
+
+export interface RelatedNode {
+  id: number;
+  title: MediaTitle;
+  coverImage: { medium: string };
+  type: string;
+  format: string;
+}
+
+export interface RelationEdge {
+  relationType: string;
+  node: RelatedNode;
+}
+
+export interface Media {
+  id: number;
+  idMal?: number;
+  title: MediaTitle;
+  format?: string;
+  episodes?: number;
+  averageScore?: number;
+  status: string;
+  season?: string;
+  seasonYear?: number;
+  genres: string[];
+  description?: string;
+  coverImage: CoverImage;
+  mediaListEntry?: MediaListEntry;
+  relations?: { edges: RelationEdge[] };
+}
+
+export interface Config {
+  bash_path: string;
+  quality: string;
+  confirm_before_sync: boolean;
+  anilist_token: string;
+  download_dir: string;
+  theme: string;
+  auto_sync: boolean;
+  dub: boolean;
+}
+
+export type TabName = "continue" | "trending" | "search" | "planning" | "downloads";
